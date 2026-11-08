@@ -1,15 +1,9 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useUserLocation, UseUserLocationReturn } from '@/hooks/controlador/useUserLocation';
+import { useContext, useEffect, useState, ReactNode } from 'react';
+import { useUserLocation } from '@/hooks/controlador/useUserLocation';
 import { useSessionPersistence } from '@/hooks/controlador/useSessionPersistence';
 import { useLocationSync } from '@/hooks/controlador/useLocationSync';
 import { supabase } from '@/integrations/supabase/client';
-
-interface LocationContextValue extends UseUserLocationReturn {
-  /** Limpia la ubicación del usuario en la base de datos */
-  clearUserLocation: () => Promise<void>;
-}
-
-const LocationContext = createContext<LocationContextValue | null>(null);
+import { LocationContext, type LocationContextValue } from './location-context';
 
 interface LocationProviderProps {
   children: ReactNode;
