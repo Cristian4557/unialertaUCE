@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { withTimeout } from '@/lib/withTimeout';
 
 type Category = Database['public']['Tables']['categories']['Row'];
 type TipoReporte = Database['public']['Tables']['tipo_categories']['Row'];
@@ -54,18 +55,22 @@ export function useSmartReportAnalysis(): UseSmartReportAnalysisReturn {
     try {
       // Paso 1: Subir imagen via edge function para obtener una URL
       console.log('[SmartReportAnalysis] Uploading image via edge function...');
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('cloudinary-upload', {
+      const { data: uploadData, error: uploadError } = await withTimeout((signal) => supabase.functions.invoke('cloudinary-upload', {
+        signal,
         body: {
           file: imageBase64,
           folder: 'temp-analysis',
         },
-      });
+      }), 30000, 'La subida de la imagen tardó demasiado. Intenta de nuevo.');
       
       if (uploadError || uploadData?.error) {
         throw new Error(uploadError?.message || uploadData?.error || 'Error al subir imagen para análisis');
       }
       
-      const imageUrl = uploadData.secure_url;
+      const imageUrl = uploadData?.secure_url;
+      if (typeof imageUrl !== 'string' || !imageUrl) {
+        throw new Error('No se recibió la imagen subida. Intenta de nuevo.');
+      }
       console.log('[SmartReportAnalysis] Image uploaded:', imageUrl);
 
       // Paso 2: Llamar a la edge function con la URL
@@ -77,9 +82,10 @@ export function useSmartReportAnalysis(): UseSmartReportAnalysisReturn {
       if (options.categories?.length) body.categories = options.categories;
       if (options.tipoReportes?.length) body.tipoReportes = options.tipoReportes;
 
-      const { data, error: fnError } = await supabase.functions.invoke('analyze-report-image', {
+      const { data, error: fnError } = await withTimeout((signal) => supabase.functions.invoke('analyze-report-image', {
         body,
-      });
+        signal,
+      }), 45000, 'El análisis de la imagen tardó demasiado. Intenta de nuevo.');
 
       if (fnError) {
         console.error('[SmartReportAnalysis] Edge function error:', fnError);

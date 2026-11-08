@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { withTimeout } from '@/lib/withTimeout';
 
 export interface OSMLocationData {
   edificio?: string;
@@ -514,17 +515,19 @@ out body geom;
     signal: AbortSignal
   ): Promise<OverpassResponse | null> => {
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        body: query,
-        headers: { 'Content-Type': 'text/plain' },
-        signal,
-      });
-      if (!response.ok) {
-        console.warn(`Overpass server ${url} error: ${response.status}`);
-        return null;
-      }
-      return await response.json();
+      return await withTimeout(async (requestSignal) => {
+        const response = await fetch(url, {
+          method: 'POST',
+          body: query,
+          headers: { 'Content-Type': 'text/plain' },
+          signal: requestSignal,
+        });
+        if (!response.ok) {
+          console.warn(`Overpass server ${url} error: ${response.status}`);
+          return null;
+        }
+        return await response.json();
+      }, 5000, 'Tiempo agotado al consultar OpenStreetMap', signal);
     } catch (error) {
       if ((error as Error).name === 'AbortError') throw error;
       console.warn(`Overpass server ${url} failed:`, error);
@@ -559,6 +562,7 @@ out body geom;
       // Intentar cada servidor en orden hasta que uno responda
       let data: OverpassResponse | null = null;
       for (const server of OVERPASS_SERVERS) {
+        if (signal.aborted) return {};
         data = await tryOverpassServer(server, query, signal);
         if (data) break;
       }

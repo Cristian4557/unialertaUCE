@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Camera, Loader2, MapPin, AlertTriangle, CheckCircle, X, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { withTimeout } from '@/lib/withTimeout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -167,7 +168,9 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
   const globalLocation = useGlobalLocation();
   const { uploadFromDataUrl, isUploading } = useCloudinaryUpload();
   const { fetchOSMLocationData } = useOSMLocationData();
-  const { analyzeImage, isAnalyzing } = useSmartReportAnalysis();
+  const { analyzeImage, isAnalyzing, error: analysisError } = useSmartReportAnalysis();
+  const analysisErrorRef = useRef(analysisError);
+  analysisErrorRef.current = analysisError;
   
   // CRÍTICO: Usar profileData.id como ID del reportante (más confiable que profile?.id)
   // Este ID se usa para EXCLUIR al usuario que reporta de la asignación
@@ -465,7 +468,8 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
 
       const nextImages = [...(baseDraft.imagenes || []), imageUrl];
 
-      navigate(navState.returnTo!, {
+      if (!navState.returnTo) return;
+      navigate(navState.returnTo, {
         state: {
           backTo: navState.backTo,
           prefill: {
@@ -506,18 +510,8 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
         return;
       }
 
-       // Paso 2: Obtener datos OSM (30%)
+      // La información geográfica es complementaria: no retrasar la IA por OSM.
       setProgress(30);
-      const osmResult = await fetchOSMLocationData(location.latitude, location.longitude);
-      console.log('[SmartReportCapture] OSM result:', osmResult);
-      setOsmData(osmResult || null);
-
-       // Paso 2.1: Obtener dirección (Nominatim) (40%)
-       setProgress(40);
-       const address = await getAddressForLocation(location.latitude, location.longitude);
-
-       // Paso 3: Analizar imagen con IA (60%)
-      setProgress(50);
       // Pasar categorías y tipos para que la IA tenga contexto completo
       const analyzeOptions: AnalyzeImageOptions = {
         categories: activeCategories.map(c => ({ id: c.id, nombre: c.nombre })),
@@ -525,10 +519,16 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
           .filter(t => t.activo && !t.deleted_at)
           .map(t => ({ id: t.id, nombre: t.nombre, category_id: t.category_id })),
       };
-      const analysis = await analyzeImage(imageBase64, analyzeOptions);
+      const [osmResult, address, analysis] = await Promise.all([
+        fetchOSMLocationData(location.latitude, location.longitude),
+        getAddressForLocation(location.latitude, location.longitude),
+        analyzeImage(imageBase64, analyzeOptions),
+      ]);
+      console.log('[SmartReportCapture] OSM result:', osmResult);
+      setOsmData(osmResult || null);
       
       if (!analysis) {
-        toast.error('No se pudo analizar la imagen. Intenta de nuevo.');
+        toast.error(analysisErrorRef.current || 'No se pudo analizar la imagen. Intenta de nuevo.');
         setStep('camera');
         return;
       }
@@ -563,12 +563,12 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
       } else {
         console.log('[SmartReportCapture] ID del reportante (a excluir):', reporterId);
         
-        const nearbyUsers = await findNearbyUsers(
+        const nearbyUsers = await withTimeout(() => findNearbyUsers(
           location.latitude, 
           location.longitude, 
           analysis.prioridad,
           reporterId // IMPORTANTE: Excluir al reportante
-        );
+        ), 10000, 'Tiempo agotado al buscar responsables').catch(() => []);
         
         console.log('[SmartReportCapture] Usuarios cercanos encontrados:', nearbyUsers.length);
         nearbyUsers.forEach(u => console.log(`  - ${u.name} (${u.id}) - ${u.isOnline ? 'ONLINE' : 'offline'} - ${Math.round(u.distance)}m`));
@@ -603,12 +603,12 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
 
       // Paso 6: Verificar reportes similares (90%)
       setProgress(90);
-       const similarFound = await fetchSimilarReports(
+       const similarFound = await withTimeout(() => fetchSimilarReports(
         location.latitude,
         location.longitude,
          ids.categoriaId || undefined,
          ids.tipoReporteId || undefined
-      );
+      ), 10000, 'No se pudieron comprobar reportes similares. Intenta de nuevo.');
 
       setProgress(100);
 
@@ -671,7 +671,7 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
       }
     } catch (error) {
       console.error('Error processing capture:', error);
-      toast.error('Error al procesar la captura');
+      toast.error(error instanceof Error ? error.message : 'Error al procesar la captura');
       setStep('camera');
     }
   }, [globalLocation.location, fetchOSMLocationData, analyzeImage, activeCategories, tipoReportes, findNearbyUsers, selectBestUser, fetchSimilarReports, navigate, defaultBackRoute, assignedUserId, resolveCategoryTipoIds, getAddressForLocation, currentReporterId]);
@@ -984,7 +984,7 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
             
             <div className="space-y-2 text-sm text-muted-foreground">
               {progress >= 10 && <p className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-green-500" /> Ubicación obtenida</p>}
-              {progress >= 30 && <p className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-green-500" /> Área detectada</p>}
+              {progress >= 70 && osmData && Object.values(osmData).some(Boolean) && <p className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-green-500" /> Área detectada</p>}
               {progress >= 60 && <p className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-green-500" /> Imagen analizada</p>}
               {progress >= 80 && <p className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-green-500" /> Asignación verificada</p>}
               {progress >= 100 && <p className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-green-500" /> Proceso completado</p>}
