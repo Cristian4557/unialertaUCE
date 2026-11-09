@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { cleanupPreviewServiceWorkers, isServiceWorkerAllowed } from "./lib/serviceWorkerGuard";
 
 // Aplicar tema inmediatamente antes del render para evitar flash
 const THEME_STORAGE_KEY = 'user_cache:theme';
@@ -27,6 +28,10 @@ document.documentElement.classList.add(initialTheme);
 
 // Registrar Service Worker para notificaciones push
 async function registerServiceWorker() {
+  if (!isServiceWorkerAllowed()) {
+    await cleanupPreviewServiceWorkers();
+    return;
+  }
   if ('serviceWorker' in navigator) {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js', {

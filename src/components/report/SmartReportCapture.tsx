@@ -306,6 +306,10 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
     }
   }, [facingMode, step, isCameraReady, startCamera]);
 
+  // Referencias a los procesos más recientes para evitar datos desactualizados al capturar
+  const processCaptureRef = useRef<(image: string) => Promise<void>>(async () => {});
+  const processAppendImageRef = useRef<(image: string) => Promise<void>>(async () => {});
+
   // Capturar foto
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -325,13 +329,14 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
       // Modo "agregar más imágenes": analizar la nueva imagen y volver al ReportForm
       if (isAppendImagesMode) {
         stopCamera();
-        processAppendImage(imageUrl);
+        processAppendImageRef.current(imageUrl);
         return;
       }
 
-      processCapture(imageUrl);
+      // Usar siempre la versión más reciente (ubicación, categorías y tipos actuales)
+      processCaptureRef.current(imageUrl);
     }
-  }, [stopCamera, isAppendImagesMode, navigate]);
+  }, [stopCamera, isAppendImagesMode]);
 
   const buildContextString = useCallback((draft?: ReportDraft, aiState?: DraftAIState) => {
     const parts: string[] = [];
@@ -675,6 +680,9 @@ export function SmartReportCapture({ onSuccess, defaultBackRoute = '/mis-reporte
       setStep('camera');
     }
   }, [globalLocation.location, fetchOSMLocationData, analyzeImage, activeCategories, tipoReportes, findNearbyUsers, selectBestUser, fetchSimilarReports, navigate, defaultBackRoute, assignedUserId, resolveCategoryTipoIds, getAddressForLocation, currentReporterId]);
+
+  processCaptureRef.current = processCapture;
+  processAppendImageRef.current = processAppendImage;
 
   // Guardar reporte
   const saveReport = useCallback(async (

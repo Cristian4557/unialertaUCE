@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { isServiceWorkerAllowed } from '@/lib/serviceWorkerGuard';
 
 export type NotificationPermissionState = 'default' | 'granted' | 'denied' | 'unsupported';
 
@@ -46,6 +47,10 @@ export function usePushNotifications(): UsePushNotificationsReturn {
   const registerServiceWorker = useCallback(async (): Promise<ServiceWorkerRegistration | null> => {
     if (!('serviceWorker' in navigator)) {
       console.warn('[Push] Service Worker no soportado');
+      return null;
+    }
+    if (!isServiceWorkerAllowed()) {
+      console.info('[Push] Service Worker deshabilitado en la vista previa');
       return null;
     }
 
