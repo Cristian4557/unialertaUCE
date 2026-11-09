@@ -1,24 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import { resetLayoutShown } from '@/components/AppLayout';
-
-interface AuthState {
-  user: User | null;
-  session: Session | null;
-  loading: boolean;
-  isAuthenticated: boolean;
-  hasInitialized: boolean;
-  isSigningOut: boolean;
-}
-
-interface AuthContextType extends AuthState {
-  refreshSession: () => Promise<void>;
-  clearSession: () => void;
-  setSigningOut: (value: boolean) => void;
-}
-
-const AuthContext = createContext<AuthContextType | null>(null);
+import { AuthContext, type AuthState } from './auth-context';
 
 /**
  * Provider global de autenticación.
