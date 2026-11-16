@@ -125,6 +125,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event: AuthChangeEvent, session: Session | null) => {
         updateSessionState(session);
+
+        // Enlace de recuperación: forzar la pantalla de cambio de contraseña
+        // aunque el correo redirija a la raíz del sitio.
+        if (event === 'PASSWORD_RECOVERY') {
+          sessionStorage.setItem('pw_recovery', '1');
+          if (window.location.pathname !== '/reset-password') {
+            window.location.replace('/reset-password');
+          }
+        }
         
         if (process.env.NODE_ENV === 'development') {
           console.log('[AuthContext] Auth event:', event, session ? 'Session active' : 'No session');

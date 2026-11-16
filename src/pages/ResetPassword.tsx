@@ -25,6 +25,17 @@ export default function ResetPassword() {
 
   useEffect(() => {
     if (processedRef.current) return;
+
+    if (sessionStorage.getItem('pw_recovery') === '1') {
+      sessionStorage.removeItem('pw_recovery');
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) {
+          processedRef.current = true;
+          setIsValidRecovery(true);
+          setErrorMessage(null);
+        }
+      });
+    }
     
     // Escuchar específicamente el evento PASSWORD_RECOVERY
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
